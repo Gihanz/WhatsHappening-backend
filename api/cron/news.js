@@ -8,12 +8,20 @@ export default async function handler(req, res) {
 
   try {
     logger.info("📰 News cron started");
-    await runNewsJob();
-    logger.info("✅ News cron completed");
 
+    if (typeof runNewsJob === "function") {
+      await runNewsJob();
+    } else {
+      throw new Error("runNewsJob not defined");
+    }
+
+    logger.info("✅ News cron completed");
     res.status(200).json({ status: "ok" });
   } catch (err) {
-    logger.error("❌ News cron failed", err);
-    res.status(500).json({ error: "News cron failed" });
+    logger.error("❌ News cron failed", {
+      message: err.message,
+      stack: err.stack
+    });
+    res.status(500).json({ error: "News cron failed", details: err.message });
   }
 }

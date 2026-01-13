@@ -8,12 +8,20 @@ export default async function handler(req, res) {
 
   try {
     logger.info("🌦️ Weather cron started");
-    await runWeatherJob();
-    logger.info("✅ Weather cron completed");
 
+    if (typeof runWeatherJob === "function") {
+      await runWeatherJob();
+    } else {
+      throw new Error("runWeatherJob not defined");
+    }
+
+    logger.info("✅ Weather cron completed");
     res.status(200).json({ status: "ok" });
   } catch (err) {
-    logger.error("❌ Weather cron failed", err);
-    res.status(500).json({ error: "Weather cron failed" });
+    logger.error("❌ Weather cron failed", {
+      message: err.message,
+      stack: err.stack
+    });
+    res.status(500).json({ error: "Weather cron failed", details: err.message });
   }
 }

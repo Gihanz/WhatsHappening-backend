@@ -8,20 +8,12 @@ import { postToFacebook } from "../services/facebook.service.js";
 
 import logger from "../utils/logger.js";
 
-/**
- * Run Events Job
- * - Fetch enabled event sources
- * - Read RSS feeds
- * - Deduplicate
- * - Generate AI post
- * - Post to Facebook
- */
 export async function runEventsJob() {
   logger.info("📅 Events job started");
 
   const sources = await getEnabledSourcesByType("events");
 
-  if (!sources.length) {
+  if (!sources?.length) {
     logger.info("No enabled event sources found");
     return;
   }
@@ -31,18 +23,20 @@ export async function runEventsJob() {
 
     const items = await fetchRSS(source.url);
 
-    for (const item of items) {
-      const hashInput = `${source.name}|${item.title}|${item.publishedAt}`;
-      const hash = generateHash(hashInput);
+    if (!items?.length) {
+      logger.info(`No items found for source: ${source.name}`);
+      continue;
+    }
 
-      // 🔁 Duplicate check
+    for (const item of items) {
+      const hash = generateHash(`${source.name}|${item.title}|${item.publishedAt}`);
+
       if (await isProcessed(hash)) {
         logger.debug(`Skipped duplicate: ${item.title}`);
         continue;
       }
 
       try {
-        // ✍️ AI post generation
         const postText = await generatePost({
           type: "event",
           title: item.title,
@@ -50,10 +44,10 @@ export async function runEventsJob() {
           location: "London, ON"
         });
 
-        // 📤 Facebook post
-        await postToFacebook(postText, item.link);
+        if (postText) {
+          await postToFacebook(postText, item.link);
+        }
 
-        // ✅ Mark as processed
         await markAsProcessed({
           hash,
           source: source.name,
@@ -65,9 +59,11 @@ export async function runEventsJob() {
 
         logger.info(`✅ Event posted: ${item.title}`);
       } catch (err) {
-        logger.error(`❌ Failed posting event: ${item.title}`, err);
+        logger.error(`❌ Failed posting event: ${item.title}`, {
+          message: err.message,
+          stack: err.stack
+        });
 
-        // Mark as failed (prevents retry loops)
         await markAsProcessed({
           hash,
           source: source.name,

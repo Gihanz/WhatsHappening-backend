@@ -8,12 +8,20 @@ export default async function handler(req, res) {
 
   try {
     logger.info("🚗 Traffic cron started");
-    await runTrafficJob();
-    logger.info("✅ Traffic cron completed");
 
+    if (typeof runTrafficJob === "function") {
+      await runTrafficJob();
+    } else {
+      throw new Error("runTrafficJob not defined");
+    }
+
+    logger.info("✅ Traffic cron completed");
     res.status(200).json({ status: "ok" });
   } catch (err) {
-    logger.error("❌ Traffic cron failed", err);
-    res.status(500).json({ error: "Traffic cron failed" });
+    logger.error("❌ Traffic cron failed", {
+      message: err.message,
+      stack: err.stack
+    });
+    res.status(500).json({ error: "Traffic cron failed", details: err.message });
   }
 }

@@ -1,12 +1,10 @@
 import crypto from "crypto";
 
-/**
- * Generate SHA-256 hash for any content
- * @param {string} input
- */
 export function generateHash(input) {
+  if (!input) return null;
+
   return crypto
     .createHash("sha256")
-    .update(input.trim().toLowerCase())
+    .update(String(input).trim().toLowerCase())
     .digest("hex");
 }

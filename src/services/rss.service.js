@@ -1,25 +1,34 @@
 import Parser from "rss-parser";
+import logger from "../utils/logger.js";
 
 const parser = new Parser({
   timeout: 10000
 });
 
-/**
- * Fetch RSS items from a source
- * @param {string} url
- */
 export async function fetchRSS(url) {
+  if (!url) return [];
+
   try {
     const feed = await parser.parseURL(url);
 
-    return feed.items.map(item => ({
-      title: item.title || "",
-      link: item.link || "",
-      content: item.contentSnippet || item.content || "",
-      publishedAt: item.isoDate || item.pubDate || null
-    }));
+    if (!feed?.items?.length) return [];
+
+    return feed.items
+      .filter(item => item?.title || item?.content || item?.contentSnippet)
+      .map(item => ({
+        title: item.title?.trim() || "",
+        link: item.link || "",
+        content:
+          item.contentSnippet?.trim() ||
+          item.content?.trim() ||
+          "",
+        publishedAt: item.isoDate || item.pubDate || null
+      }));
   } catch (err) {
-    console.error("RSS fetch failed:", url, err.message);
+    logger.error("RSS fetch failed", {
+      url,
+      error: err.message
+    });
     return [];
   }
 }
