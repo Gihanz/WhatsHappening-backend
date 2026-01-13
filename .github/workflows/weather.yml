@@ -1,0 +1,16 @@
+name: Weather Alerts
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # Every 15 minutes
+    - cron: "*/30 * * * *"   # Every 30 minutes
+  workflow_dispatch:          # Allows manual trigger
+
+jobs:
+  run-weather:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Weather API Endpoint
+        run: |
+          curl -X GET https://YOUR_APP.vercel.app/api/cron/weather \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

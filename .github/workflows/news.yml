@@ -1,0 +1,15 @@
+name: News Updates
+
+on:
+  schedule:
+    - cron: "0 * * * *"   # Every hour at minute 0
+  workflow_dispatch:
+
+jobs:
+  run-news:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call News API Endpoint
+        run: |
+          curl -X GET https://YOUR_APP.vercel.app/api/cron/news \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

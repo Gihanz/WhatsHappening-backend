@@ -1,0 +1,15 @@
+name: Traffic Alerts
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # Every 15 minutes
+  workflow_dispatch:
+
+jobs:
+  run-traffic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Traffic API Endpoint
+        run: |
+          curl -X GET https://YOUR_APP.vercel.app/api/cron/traffic \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

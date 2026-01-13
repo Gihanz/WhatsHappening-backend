@@ -1,0 +1,15 @@
+name: Events
+
+on:
+  schedule:
+    - cron: "0 13 * * *"   # Daily at 8AM London, ON (UTC+5)
+  workflow_dispatch:
+
+jobs:
+  run-events:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Events API Endpoint
+        run: |
+          curl -X GET https://YOUR_APP.vercel.app/api/cron/events \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
