@@ -6,6 +6,9 @@ import { generateHash } from "../services/hash.service.js";
 import { generatePost } from "../services/ai.service.js";
 import { postToFacebook } from "../services/facebook.service.js";
 
+import { incrementPosts } from "../repositories/stats.repo.js";
+import { addLog } from "../repositories/logs.repo.js";
+
 import logger from "../utils/logger.js";
 
 export async function runWeatherJob() {
@@ -46,6 +49,8 @@ export async function runWeatherJob() {
 
         if (postText) {
           await postToFacebook(postText, item.link);
+          await incrementPosts(1); // ✅ Update stats
+          await addLog("info", `Posted weather alert: ${item.title}`);
         }
 
         await markAsProcessed({
@@ -71,6 +76,10 @@ export async function runWeatherJob() {
           type: "weather",
           publishedAt: item.publishedAt,
           status: "failed"
+        });
+
+        await addLog("error", `Failed weather post: ${item.title}`, {
+          message: err.message
         });
       }
     }

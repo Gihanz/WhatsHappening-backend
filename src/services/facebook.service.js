@@ -1,28 +1,16 @@
 import fetch from "node-fetch";
-import { db } from "../config/firebase.js";
 
-async function getFacebookSettings() {
-  const doc = await db.collection("settings").doc("facebook").get();
+const pageId = process.env.FACEBOOK_PAGE_ID;
+const pageAccessToken = process.env.FACEBOOK_PAGE_TOKEN;
 
-  if (!doc.exists) {
-    throw new Error("Facebook settings missing");
-  }
-
-  const { pageId, pageAccessToken } = doc.data();
-
-  if (!pageId || !pageAccessToken) {
-    throw new Error("Facebook credentials invalid");
-  }
-
-  return { pageId, pageAccessToken };
+if (!pageId || !pageAccessToken) {
+  throw new Error("Facebook credentials missing or invalid in environment variables");
 }
 
 export async function postToFacebook(message, link = null) {
   if (!message) {
     throw new Error("Empty Facebook message");
   }
-
-  const { pageId, pageAccessToken } = await getFacebookSettings();
 
   const url = `https://graph.facebook.com/v19.0/${pageId}/feed`;
 
@@ -37,9 +25,7 @@ export async function postToFacebook(message, link = null) {
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(
-      `Facebook API failed: ${data?.error?.message || "Unknown error"}`
-    );
+    throw new Error(`Facebook API failed: ${data?.error?.message || "Unknown error"}`);
   }
 
   return data;

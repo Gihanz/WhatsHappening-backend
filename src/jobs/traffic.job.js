@@ -11,13 +11,13 @@ import { addLog } from "../repositories/logs.repo.js";
 
 import logger from "../utils/logger.js";
 
-export async function runEventsJob() {
-  logger.info("📅 Events job started");
+export async function runTrafficJob() {
+  logger.info("🚗 Traffic job started");
 
-  const sources = await getEnabledSourcesByType("events");
+  const sources = await getEnabledSourcesByType("traffic");
 
   if (!sources?.length) {
-    logger.info("No enabled event sources found");
+    logger.info("No enabled traffic sources found");
     return;
   }
 
@@ -41,7 +41,7 @@ export async function runEventsJob() {
 
       try {
         const postText = await generatePost({
-          type: "event",
+          type: "traffic",
           title: item.title,
           content: item.content,
           location: "London, ON"
@@ -50,21 +50,21 @@ export async function runEventsJob() {
         if (postText) {
           await postToFacebook(postText, item.link);
           await incrementPosts(1);
-          await addLog("info", `Posted event: ${item.title}`);
+          await addLog("info", `Posted traffic: ${item.title}`);
         }
 
         await markAsProcessed({
           hash,
           source: source.name,
           title: item.title,
-          type: "events",
+          type: "traffic",
           publishedAt: item.publishedAt,
           status: "posted"
         });
 
-        logger.info(`✅ Event posted: ${item.title}`);
+        logger.info(`✅ Traffic posted: ${item.title}`);
       } catch (err) {
-        logger.error(`❌ Failed posting event: ${item.title}`, {
+        logger.error(`❌ Failed posting traffic: ${item.title}`, {
           message: err.message,
           stack: err.stack
         });
@@ -73,17 +73,17 @@ export async function runEventsJob() {
           hash,
           source: source.name,
           title: item.title,
-          type: "events",
+          type: "traffic",
           publishedAt: item.publishedAt,
           status: "failed"
         });
 
-        await addLog("error", `Failed event post: ${item.title}`, {
+        await addLog("error", `Failed traffic post: ${item.title}`, {
           message: err.message
         });
       }
     }
   }
 
-  logger.info("📅 Events job completed");
+  logger.info("🚗 Traffic job completed");
 }
