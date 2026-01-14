@@ -1,8 +1,8 @@
-name: News Updates
+name: News
 
 on:
   schedule:
-    - cron: "0 * * * *"   # Every hour at minute 0
+    - cron: "0 13 * * *"   # Daily at 8AM London, ON (UTC+5)
   workflow_dispatch:
 
 jobs:

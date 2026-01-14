@@ -1,110 +1,82 @@
 import { getEnabledSourcesByType } from "../repositories/source.repo.js";
 import { isProcessed, markAsProcessed } from "../repositories/processed.repo.js";
-
 import { fetchRSS } from "../services/rss.service.js";
 import { generateHash } from "../services/hash.service.js";
 import { generatePost } from "../services/ai.service.js";
 import { postToFacebook } from "../services/facebook.service.js";
 
-import { incrementPosts } from "../repositories/stats.repo.js";
+import { incrementPosts, hasRun, updateLastRun } from "../repositories/stats.repo.js";
 import { addLog } from "../repositories/logs.repo.js";
-
 import logger from "../utils/logger.js";
 
 export async function runEventsJob() {
-  logger.info("📅 Events job started");
+  // Only post once per week
+  if (await hasRun("events", "weekly")) {
+    logger.info("📅 Events already posted this week. Skipping.");
+    return;
+  }
 
+  logger.info("📅 Events job started");
   const sources = await getEnabledSourcesByType("events");
   if (!sources?.length) {
     logger.info("No enabled event sources found");
     return;
   }
 
+  let posted = false;
+
   for (const source of sources) {
-    logger.info(`Processing source: ${source.name}`);
-
     const items = await fetchRSS(source.url);
-    if (!items?.length) {
-      logger.info(`No items found for source: ${source.name}`);
-      continue;
-    }
+    if (!items?.length) continue;
 
-    for (const item of items) {
-      const hash = generateHash(`${source.name}|${item.title}|${item.publishedAt}`);
+    const top5 = items.slice(0, 5);
+    const titles = top5.map(i => `• ${i.title}`).join("\n");
 
-      try {
-        if (await isProcessed(hash)) {
-          logger.debug(`Skipped duplicate: ${item.title}`);
-          continue;
-        }
+    // Generate hash for this weekly post
+    const hash = generateHash(`${source.name}|${titles}|${new Date().toDateString()}`);
+    if (await isProcessed(hash)) continue;
 
-        // Generate AI post
-        let postText;
-        try {
-          postText = await generatePost({
-            type: "event",
-            title: item.title,
-            content: item.content,
-            location: "London, ON"
-          });
-        } catch (aiErr) {
-          logger.error(`OpenAI post generation failed for: ${item.title}`, { message: aiErr.message });
-          await markAsProcessed({
-            hash,
-            source: source.name,
-            title: item.title,
-            type: "events",
-            publishedAt: item.publishedAt,
-            status: "failed"
-          });
-          await addLog("error", `AI generation failed: ${item.title}`, { message: aiErr.message });
-          continue; // skip posting
-        }
+    try {
+      const postText = await generatePost({
+        type: "event",
+        title: `Top 5 Events This Week`,
+        content: titles,
+        location: "London, ON"
+      });
 
-        // Post to Facebook
-        if (postText) {
-          try {
-            await postToFacebook(postText, item.link);
-            await incrementPosts(1);
-            await addLog("info", `Posted event: ${item.title}`);
-            logger.info(`✅ Event posted: ${item.title}`);
-
-            await markAsProcessed({
-              hash,
-              source: source.name,
-              title: item.title,
-              type: "events",
-              publishedAt: item.publishedAt,
-              status: "posted"
-            });
-          } catch (fbErr) {
-            logger.error(`Facebook post failed: ${item.title}`, { message: fbErr.message });
-            await markAsProcessed({
-              hash,
-              source: source.name,
-              title: item.title,
-              type: "events",
-              publishedAt: item.publishedAt,
-              status: "failed"
-            });
-            await addLog("error", `Facebook post failed: ${item.title}`, { message: fbErr.message });
-          }
-        }
-      } catch (err) {
-        // Catch-all for unexpected errors
-        logger.error(`Unexpected error for item: ${item.title}`, { message: err.message });
-        await markAsProcessed({
-          hash,
-          source: source.name,
-          title: item.title,
-          type: "events",
-          publishedAt: item.publishedAt,
-          status: "failed"
-        });
-        await addLog("error", `Unexpected error: ${item.title}`, { message: err.message });
+      if (postText) {
+        await postToFacebook(postText);
+        await incrementPosts(1); // Update daily stats
+        await addLog("info", "Posted top 5 events for this week");
       }
+
+      await markAsProcessed({
+        hash,
+        source: source.name,
+        title: `Top 5 Events This Week`,
+        type: "events",
+        publishedAt: new Date(),
+        status: "posted"
+      });
+
+      posted = true;
+      logger.info("✅ Events posted for this week");
+    } catch (err) {
+      logger.error("❌ Failed posting events", { message: err.message });
+      await markAsProcessed({
+        hash,
+        source: source.name,
+        title: `Top 5 Events This Week`,
+        type: "events",
+        publishedAt: new Date(),
+        status: "failed"
+      });
+      await addLog("error", "Failed events post", { message: err.message });
     }
+
+    if (posted) break; // Only one post per week
   }
 
+  if (posted) await updateLastRun("events"); // Mark weekly run
   logger.info("📅 Events job completed");
 }

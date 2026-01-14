@@ -1,8 +1,8 @@
-name: Traffic Alerts
+name: Traffic
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # Every 15 minutes
+    - cron: "0 13 * * *"   # Daily at 8AM London, ON (UTC+5)
   workflow_dispatch:
 
 jobs:

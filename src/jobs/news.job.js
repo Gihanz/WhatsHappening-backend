@@ -1,110 +1,77 @@
 import { getEnabledSourcesByType } from "../repositories/source.repo.js";
 import { isProcessed, markAsProcessed } from "../repositories/processed.repo.js";
-
 import { fetchRSS } from "../services/rss.service.js";
 import { generateHash } from "../services/hash.service.js";
 import { generatePost } from "../services/ai.service.js";
 import { postToFacebook } from "../services/facebook.service.js";
 
-import { incrementPosts } from "../repositories/stats.repo.js";
+import { incrementPosts, hasRun, updateLastRun } from "../repositories/stats.repo.js";
 import { addLog } from "../repositories/logs.repo.js";
-
 import logger from "../utils/logger.js";
 
 export async function runNewsJob() {
-  logger.info("📰 News job started");
-
-  const sources = await getEnabledSourcesByType("news");
-  if (!sources?.length) {
-    logger.info("No enabled news sources found");
+  if (await hasRun("news", "daily")) {
+    logger.info("📰 News already posted today. Skipping.");
     return;
   }
 
+  logger.info("📰 News job started");
+  const sources = await getEnabledSourcesByType("news");
+  if (!sources?.length) return;
+
+  let posted = false;
+
   for (const source of sources) {
-    logger.info(`Processing source: ${source.name}`);
-
     const items = await fetchRSS(source.url);
-    if (!items?.length) {
-      logger.info(`No items found for source: ${source.name}`);
-      continue;
-    }
+    if (!items?.length) continue;
 
-    for (const item of items) {
-      const hash = generateHash(`${source.name}|${item.title}|${item.publishedAt}`);
+    const top10 = items.slice(0, 10);
+    const titles = top10.map(i => `• ${i.title}`).join("\n");
 
-      try {
-        if (await isProcessed(hash)) {
-          logger.debug(`Skipped duplicate: ${item.title}`);
-          continue;
-        }
+    const hash = generateHash(`${source.name}|${titles}|${new Date().toDateString()}`);
+    if (await isProcessed(hash)) continue;
 
-        // Generate AI post
-        let postText;
-        try {
-          postText = await generatePost({
-            type: "news",
-            title: item.title,
-            content: item.content,
-            location: "London, ON"
-          });
-        } catch (aiErr) {
-          logger.error(`OpenAI generation failed: ${item.title}`, { message: aiErr.message });
-          await markAsProcessed({
-            hash,
-            source: source.name,
-            title: item.title,
-            type: "news",
-            publishedAt: item.publishedAt,
-            status: "failed"
-          });
-          await addLog("error", `AI generation failed: ${item.title}`, { message: aiErr.message });
-          continue; // skip posting
-        }
+    try {
+      const postText = await generatePost({
+        type: "news",
+        title: `Top 10 News Today`,
+        content: titles,
+        location: "London, ON"
+      });
 
-        // Post to Facebook
-        if (postText) {
-          try {
-            await postToFacebook(postText, item.link);
-            await incrementPosts(1);
-            await addLog("info", `Posted news: ${item.title}`);
-            logger.info(`✅ News posted: ${item.title}`);
-
-            await markAsProcessed({
-              hash,
-              source: source.name,
-              title: item.title,
-              type: "news",
-              publishedAt: item.publishedAt,
-              status: "posted"
-            });
-          } catch (fbErr) {
-            logger.error(`Facebook post failed: ${item.title}`, { message: fbErr.message });
-            await markAsProcessed({
-              hash,
-              source: source.name,
-              title: item.title,
-              type: "news",
-              publishedAt: item.publishedAt,
-              status: "failed"
-            });
-            await addLog("error", `Facebook post failed: ${item.title}`, { message: fbErr.message });
-          }
-        }
-      } catch (err) {
-        // Catch-all for unexpected errors
-        logger.error(`Unexpected error for item: ${item.title}`, { message: err.message });
-        await markAsProcessed({
-          hash,
-          source: source.name,
-          title: item.title,
-          type: "news",
-          publishedAt: item.publishedAt,
-          status: "failed"
-        });
-        await addLog("error", `Unexpected error: ${item.title}`, { message: err.message });
+      if (postText) {
+        await postToFacebook(postText);
+        await incrementPosts(1);
+        await addLog("info", "Posted top 10 news today");
       }
+
+      await markAsProcessed({
+        hash,
+        source: source.name,
+        title: `Top 10 News Today`,
+        type: "news",
+        publishedAt: new Date(),
+        status: "posted"
+      });
+
+      posted = true;
+      logger.info("✅ News posted today");
+    } catch (err) {
+      logger.error("❌ Failed posting news", { message: err.message });
+      await markAsProcessed({
+        hash,
+        source: source.name,
+        title: `Top 10 News Today`,
+        type: "news",
+        publishedAt: new Date(),
+        status: "failed"
+      });
+      await addLog("error", "Failed news post", { message: err.message });
     }
+
+    if (posted) break;
   }
 
+  if (posted) await updateLastRun("news");
   logger.info("📰 News job completed");
 }
