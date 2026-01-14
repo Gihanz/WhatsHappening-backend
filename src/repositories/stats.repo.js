@@ -1,4 +1,5 @@
-import { db, FieldValue, Timestamp } from "../config/firebase.js";
+import { db } from "../config/firebase.js";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
 const COLLECTION = "stats";
 const DOC_DAILY = "daily";
