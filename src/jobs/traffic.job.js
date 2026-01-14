@@ -15,7 +15,6 @@ export async function runTrafficJob() {
   logger.info("🚗 Traffic job started");
 
   const sources = await getEnabledSourcesByType("traffic");
-
   if (!sources?.length) {
     logger.info("No enabled traffic sources found");
     return;
@@ -25,7 +24,6 @@ export async function runTrafficJob() {
     logger.info(`Processing source: ${source.name}`);
 
     const items = await fetchRSS(source.url);
-
     if (!items?.length) {
       logger.info(`No items found for source: ${source.name}`);
       continue;
@@ -34,41 +32,67 @@ export async function runTrafficJob() {
     for (const item of items) {
       const hash = generateHash(`${source.name}|${item.title}|${item.publishedAt}`);
 
-      if (await isProcessed(hash)) {
-        logger.debug(`Skipped duplicate: ${item.title}`);
-        continue;
-      }
-
       try {
-        const postText = await generatePost({
-          type: "traffic",
-          title: item.title,
-          content: item.content,
-          location: "London, ON"
-        });
-
-        if (postText) {
-          await postToFacebook(postText, item.link);
-          await incrementPosts(1);
-          await addLog("info", `Posted traffic: ${item.title}`);
+        if (await isProcessed(hash)) {
+          logger.debug(`Skipped duplicate: ${item.title}`);
+          continue;
         }
 
-        await markAsProcessed({
-          hash,
-          source: source.name,
-          title: item.title,
-          type: "traffic",
-          publishedAt: item.publishedAt,
-          status: "posted"
-        });
+        // Generate AI post
+        let postText;
+        try {
+          postText = await generatePost({
+            type: "traffic",
+            title: item.title,
+            content: item.content,
+            location: "London, ON"
+          });
+        } catch (aiErr) {
+          logger.error(`OpenAI generation failed: ${item.title}`, { message: aiErr.message });
+          await markAsProcessed({
+            hash,
+            source: source.name,
+            title: item.title,
+            type: "traffic",
+            publishedAt: item.publishedAt,
+            status: "failed"
+          });
+          await addLog("error", `AI generation failed: ${item.title}`, { message: aiErr.message });
+          continue; // skip posting
+        }
 
-        logger.info(`✅ Traffic posted: ${item.title}`);
+        // Post to Facebook
+        if (postText) {
+          try {
+            await postToFacebook(postText, item.link);
+            await incrementPosts(1);
+            await addLog("info", `Posted traffic: ${item.title}`);
+            logger.info(`✅ Traffic posted: ${item.title}`);
+
+            await markAsProcessed({
+              hash,
+              source: source.name,
+              title: item.title,
+              type: "traffic",
+              publishedAt: item.publishedAt,
+              status: "posted"
+            });
+          } catch (fbErr) {
+            logger.error(`Facebook post failed: ${item.title}`, { message: fbErr.message });
+            await markAsProcessed({
+              hash,
+              source: source.name,
+              title: item.title,
+              type: "traffic",
+              publishedAt: item.publishedAt,
+              status: "failed"
+            });
+            await addLog("error", `Facebook post failed: ${item.title}`, { message: fbErr.message });
+          }
+        }
       } catch (err) {
-        logger.error(`❌ Failed posting traffic: ${item.title}`, {
-          message: err.message,
-          stack: err.stack
-        });
-
+        // Catch-all for unexpected errors
+        logger.error(`Unexpected error for item: ${item.title}`, { message: err.message });
         await markAsProcessed({
           hash,
           source: source.name,
@@ -77,10 +101,7 @@ export async function runTrafficJob() {
           publishedAt: item.publishedAt,
           status: "failed"
         });
-
-        await addLog("error", `Failed traffic post: ${item.title}`, {
-          message: err.message
-        });
+        await addLog("error", `Unexpected error: ${item.title}`, { message: err.message });
       }
     }
   }
