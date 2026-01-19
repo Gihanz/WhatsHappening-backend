@@ -9,7 +9,7 @@
     "axios": "^1.6.0",
     "cheerio": "^1.0.0-rc.12",
     "rss-parser": "^3.13.0",
-    "anthropic": "^0.20.0"
+    "@anthropic-ai/sdk": "^0.32.0"
   },
   "devDependencies": {
     "dotenv": "^16.0.0"
