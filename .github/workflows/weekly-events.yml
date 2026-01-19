@@ -1,0 +1,18 @@
+name: Weekly Events Post
+
+on:
+  schedule:
+    # Runs at 9:00 AM EST (2:00 PM UTC) every Monday
+    - cron: '0 14 * * 1'
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  post-events:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Trigger Events Post
+        run: |
+          curl -X POST ${{ secrets.VERCEL_EVENTS_ENDPOINT }} \
+            -H "x-auth-token: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"
