@@ -116,21 +116,28 @@ async function generateEventsPost(events) {
     return `${i + 1}. ${event.title}\n   📍 ${event.location}\n   📅 ${dateStr}`;
   }).join('\n\n');
 
-  const prompt = `Create an engaging Facebook post about this week's top events in London, Ontario.
+  const eventCount = events.length;
 
-Top 5 Events:
+  const prompt = `Create an engaging Facebook post about upcoming events in London, Ontario.
+
+${eventCount === 1 ? 'Featured Event:' : `${eventCount} Events This Week:`}
 ${eventsText}
 
-Requirements:
-- Start with an exciting intro about the week ahead
-- Present all 5 events clearly with emojis
-- Keep it enthusiastic and community-focused
-- Total length: 400-600 characters
-- End with encouragement to attend
-- Use event-related emoji (🎭🎵🎨📚🎉 etc.)
+CRITICAL REQUIREMENTS:
+- Write a complete, self-contained Facebook post using ONLY the ${eventCount} event(s) listed above
+- DO NOT ask the user for more events
+- DO NOT say things like "we need more events", "could you share the other events", "waiting for more", or anything similar
+- DO NOT mention "Top 5" unless there are actually 5 events
+- DO NOT apologize for the number of events
+- Present the ${eventCount} event(s) as a complete and exciting lineup
+- Start with enthusiasm about what's happening in London this week
+- Use emojis to make it visually appealing
+- Keep it between 200-350 characters total
+- End with encouragement like "Don't miss out!" or "See you there!"
 - NO hashtags
+- The post should read naturally as if ${eventCount} event(s) is exactly what you intended to share
 
-Return only the post text, nothing else.`;
+Return ONLY the Facebook post text. Do not include any questions, requests, or meta-commentary.`;
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
