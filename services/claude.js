@@ -116,19 +116,25 @@ async function generateEventsPost(events) {
     return `${i + 1}. ${event.title}\n   📍 ${event.location}\n   📅 ${dateStr}`;
   }).join('\n\n');
 
-  const prompt = `Create an engaging Facebook post about this week's top events in London, Ontario.
+  const eventCount = events.length;
 
-Top 5 Events:
+  const prompt = `Create an engaging Facebook post about upcoming events in London, Ontario.
+
+${eventCount === 1 ? 'Featured Event:' : `Top ${eventCount} Events:`}
 ${eventsText}
 
 Requirements:
-- Start with an exciting intro about the week ahead
-- Present all 5 events clearly with emojis
+- Start with an exciting intro about what's happening in London this week
+- Present all ${eventCount} event(s) clearly with emojis
+- DO NOT mention that there should be more events
+- DO NOT say things like "we need more events" or "this is just the beginning"
 - Keep it enthusiastic and community-focused
-- Total length: 400-600 characters
-- End with encouragement to attend
+- Total length: 250-400 characters
+- End with encouragement to attend (e.g., "Don't miss out!", "See you there!", "Join us!")
 - Use event-related emoji (🎭🎵🎨📚🎉 etc.)
 - NO hashtags
+- If there's only 1 event, make it sound special and exclusive
+- Focus ONLY on the events listed above
 
 Return only the post text, nothing else.`;
 

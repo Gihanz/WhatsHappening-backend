@@ -7,44 +7,34 @@ const cheerio = require('cheerio');
 async function getEvents() {
   const events = [];
 
-  // Scrape from Tourism London - Events This Week
-  try {
-    const tourismEvents = await scrapeTourismLondonWeekly();
-    events.push(...tourismEvents);
-    console.log(`Got ${tourismEvents.length} events from Tourism London`);
-  } catch (error) {
-    console.error('Error scraping Tourism London:', error.message);
-  }
+  // Try multiple sources and collect all events
+  const sources = [
+    { name: 'Tourism London', fn: scrapeTourismLondonWeekly },
+    { name: 'Library', fn: scrapeLibraryEvents },
+    { name: 'Eventbrite', fn: getEventsFromEventbrite },
+    { name: 'Facebook Events', fn: getFacebookEvents }
+  ];
 
-  // If we don't have enough events, try library
-  if (events.length < 3) {
+  for (const source of sources) {
     try {
-      const libraryEvents = await scrapeLibraryEvents();
-      events.push(...libraryEvents);
-      console.log(`Got ${libraryEvents.length} events from Library`);
+      const sourceEvents = await source.fn();
+      events.push(...sourceEvents);
+      console.log(`Got ${sourceEvents.length} events from ${source.name}`);
+      
+      // Stop if we have enough events
+      if (events.length >= 5) break;
     } catch (error) {
-      console.error('Error scraping Library events:', error.message);
+      console.error(`Error from ${source.name}:`, error.message);
     }
   }
 
-  // If still not enough events, try Eventbrite
-  if (events.length < 3) {
-    try {
-      const eventbriteEvents = await getEventsFromEventbrite();
-      events.push(...eventbriteEvents);
-      console.log(`Got ${eventbriteEvents.length} events from Eventbrite`);
-    } catch (error) {
-      console.error('Error scraping Eventbrite:', error.message);
-    }
-  }
-
-  // If STILL no events, create some placeholder data so post doesn't fail
+  // If STILL no events, create helpful placeholder
   if (events.length === 0) {
-    console.log('No events found from any source, creating placeholder');
+    console.log('No events found from any source, creating helpful message');
     events.push({
-      title: 'Check Tourism London for upcoming events',
+      title: 'Check londontourism.ca for this week\'s events',
       date: new Date().toISOString(),
-      location: 'London, Ontario',
+      location: 'Various locations in London, ON',
       link: 'https://www.londontourism.ca/events/events-this-week',
       source: 'Tourism London'
     });
@@ -58,156 +48,164 @@ async function getEvents() {
 }
 
 /**
- * Scrape events from Tourism London - Events This Week page
+ * Get events from Facebook public events (for London, ON area)
  */
-async function scrapeTourismLondonWeekly() {
-  const url = 'https://www.londontourism.ca/events/events-this-week';
-  
-  const response = await axios.get(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    },
-    timeout: 15000
-  });
-
-  const $ = cheerio.load(response.data);
-  const events = [];
-
-  // List of text to exclude (UI elements, not events)
-  const excludeTexts = [
-    'event category',
-    'london, on',
-    'ontario',
-    'events',
-    'this week',
-    'next week',
-    'filter',
-    'search',
-    'categories',
-    'view all',
-    'read more',
-    'learn more'
-  ];
-
-  // Try multiple possible selectors for events
-  const selectors = [
-    '.event-item',
-    '.event-card', 
-    'article.event',
-    '.events-list .event',
-    '[class*="event"]',
-    '.listing-item',
-    '.card'
-  ];
-
-  let foundEvents = false;
-
-  for (const selector of selectors) {
-    const elements = $(selector);
+async function getFacebookEvents() {
+  try {
+    // Facebook public events search page
+    const url = 'https://www.facebook.com/events/search?q=london%20ontario';
     
-    if (elements.length > 0) {
-      console.log(`Found ${elements.length} potential events using selector: ${selector}`);
-      
-      elements.each((i, elem) => {
-        if (i >= 15) return false; // Check more elements to find real ones
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 10000
+    });
 
-        const $elem = $(elem);
-        
-        // Try various ways to extract title
-        let title = $elem.find('h2, h3, h4, .title, .event-title, [class*="title"]').first().text().trim()
-                 || $elem.find('a').first().text().trim()
-                 || '';
-        
-        // Clean up title
-        title = title.replace(/\s+/g, ' ').trim();
-        
-        // Skip if title is garbage
-        const titleLower = title.toLowerCase();
-        const isGarbage = excludeTexts.some(exclude => titleLower === exclude || titleLower.includes(exclude));
-        
-        // Skip if title is too short, too long, or contains only date/location info
-        const isTooShort = title.length < 10;
-        const isTooLong = title.length > 200;
-        const isOnlyDate = /^[a-z]{3},?\s+[a-z]{3}\s+\d{1,2}$/i.test(title);
-        const isOnlyLocation = /^[a-z\s,]+,\s*[a-z]{2}$/i.test(title) && title.length < 30;
-        
-        if (isGarbage || isTooShort || isTooLong || isOnlyDate || isOnlyLocation) {
-          return; // Skip this element
-        }
-        
-        // Try various ways to extract date
-        let date = $elem.find('time, .date, .event-date, [class*="date"]').first().text().trim()
-                || $elem.find('[datetime]').attr('datetime')
-                || '';
-        
-        // Try various ways to extract location
-        let location = $elem.find('.location, .venue, [class*="location"], [class*="venue"]').first().text().trim()
-                    || 'London, ON';
-        
-        // Try to get link
-        let link = $elem.find('a').first().attr('href') || '';
-        if (link && !link.startsWith('http')) {
-          link = 'https://www.londontourism.ca' + link;
-        }
+    const $ = cheerio.load(response.data);
+    const events = [];
 
-        // Only add if we have a valid title
-        if (title) {
-          events.push({
-            title: title,
-            date: parseEventDate(date),
-            location: location || 'London, ON',
-            link: link || url,
-            source: 'Tourism London'
-          });
-          foundEvents = true;
-        }
-      });
+    // Facebook uses dynamic rendering, so this might not work well
+    // But worth a try as fallback
+    $('a[href*="/events/"]').slice(0, 10).each((i, elem) => {
+      const $elem = $(elem);
+      const href = $elem.attr('href');
+      const text = $elem.text().trim();
       
-      if (foundEvents && events.length > 0) {
-        break; // Stop if we found events with this selector
-      }
-    }
-  }
-
-  // If no events found with selectors, try alternative approach
-  if (events.length === 0) {
-    console.log('No events found with standard selectors, trying alternative parsing...');
-    
-    // Look for any links that might be events
-    $('a').each((i, elem) => {
-      if (i >= 30) return false;
-      
-      const $link = $(elem);
-      const href = $link.attr('href');
-      let text = $link.text().trim();
-      
-      // Clean text
-      text = text.replace(/\s+/g, ' ').trim();
-      const textLower = text.toLowerCase();
-      
-      // Skip garbage
-      const isGarbage = excludeTexts.some(exclude => textLower === exclude || textLower.includes(exclude));
-      const isTooShort = text.length < 10;
-      const isTooLong = text.length > 200;
-      const isOnlyDate = /^[a-z]{3},?\s+[a-z]{3}\s+\d{1,2}$/i.test(text);
-      
-      // Filter for event-like links
-      if (href && text && !isGarbage && !isTooShort && !isTooLong && !isOnlyDate &&
-          !href.includes('#') &&
-          (href.includes('event') || href.includes('calendar'))) {
-        
+      if (text && text.length > 10 && text.length < 150) {
         events.push({
           title: text,
           date: new Date().toISOString(),
           location: 'London, ON',
-          link: href.startsWith('http') ? href : 'https://www.londontourism.ca' + href,
-          source: 'Tourism London'
+          link: href.startsWith('http') ? href : 'https://www.facebook.com' + href,
+          source: 'Facebook Events'
         });
       }
     });
+
+    return events;
+  } catch (error) {
+    console.error('Facebook events scraping failed:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Scrape events from Tourism London - Events This Week page
+ * Note: This page uses JavaScript to load events, so scraping is limited
+ */
+async function scrapeTourismLondonWeekly() {
+  const events = [];
+  
+  // Try RSS feed first (if available)
+  try {
+    const rssUrl = 'https://www.londontourism.ca/events/rss';
+    const feed = await parser.parseURL(rssUrl);
+    
+    if (feed && feed.items) {
+      feed.items.slice(0, 10).forEach(item => {
+        events.push({
+          title: item.title,
+          date: item.pubDate || item.isoDate || new Date().toISOString(),
+          location: 'London, ON',
+          link: item.link,
+          source: 'Tourism London'
+        });
+      });
+      
+      if (events.length > 0) {
+        console.log(`Found ${events.length} events from Tourism London RSS`);
+        return events;
+      }
+    }
+  } catch (error) {
+    console.log('No RSS feed available, trying HTML scraping');
+  }
+  
+  // If RSS doesn't work, try HTML scraping
+  try {
+    const url = 'https://www.londontourism.ca/events/events-this-week';
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      timeout: 15000
+    });
+
+    const $ = cheerio.load(response.data);
+    
+    // List of text to exclude
+    const excludeTexts = [
+      'event category', 'london, on', 'ontario', 'events', 'this week',
+      'next week', 'filter', 'search', 'categories', 'view all',
+      'read more', 'learn more', 'show more'
+    ];
+
+    // Try multiple selectors
+    const selectors = [
+      'article',
+      '.event',
+      '.listing',
+      '[itemtype*="Event"]',
+      '.card',
+      'li'
+    ];
+
+    for (const selector of selectors) {
+      const elements = $(selector);
+      
+      if (elements.length > 0) {
+        console.log(`Trying selector: ${selector} (found ${elements.length} elements)`);
+        
+        elements.each((i, elem) => {
+          if (events.length >= 10) return false;
+
+          const $elem = $(elem);
+          
+          // Get all text and try to find title
+          let title = $elem.find('h1, h2, h3, h4, strong, b').first().text().trim()
+                   || $elem.find('a').first().attr('title')
+                   || $elem.find('a').first().text().trim();
+          
+          // Clean title
+          title = title.replace(/\s+/g, ' ').trim();
+          const titleLower = title.toLowerCase();
+          
+          // Validation
+          const isGarbage = excludeTexts.some(ex => titleLower === ex || titleLower.startsWith(ex));
+          const isTooShort = title.length < 10;
+          const isTooLong = title.length > 200;
+          const isOnlyDate = /^[a-z]{3},?\s+[a-z]{3}\s+\d{1,2}$/i.test(title);
+          const isOnlyLocation = /^[a-z\s,]+,\s*[a-z]{2}$/i.test(title);
+          
+          if (!isGarbage && !isTooShort && !isTooLong && !isOnlyDate && !isOnlyLocation && title) {
+            const date = $elem.find('time, .date, [datetime]').first().text().trim()
+                      || $elem.find('[datetime]').attr('datetime')
+                      || '';
+            
+            const link = $elem.find('a').first().attr('href') || '';
+            
+            events.push({
+              title: title,
+              date: parseEventDate(date),
+              location: 'London, ON',
+              link: link.startsWith('http') ? link : `https://www.londontourism.ca${link}`,
+              source: 'Tourism London'
+            });
+          }
+        });
+        
+        if (events.length > 0) break;
+      }
+    }
+  } catch (error) {
+    console.error('Error scraping Tourism London:', error.message);
   }
 
-  console.log(`Scraped ${events.length} valid events from Tourism London`);
+  console.log(`Scraped ${events.length} events from Tourism London`);
   return events;
 }
 
