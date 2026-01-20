@@ -49,103 +49,129 @@ async function getWeatherData() {
 }
 
 /**
- * Scrape weather from weather.com (free, no API key needed)
+ * Scrape weather using wttr.in (free weather API, no key needed)
  */
 async function scrapeWeatherData() {
-  const url = 'https://weather.com/weather/today/l/42.98,-81.25'; // London, ON coordinates
-  
-  const response = await axios.get(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
-  });
-  
-  const $ = cheerio.load(response.data);
-  
-  // Extract current weather data
-  const currentTemp = $('[data-testid="TemperatureValue"]').first().text();
-  const condition = $('[data-testid="wxPhrase"]').first().text();
-  const highTemp = $('[data-testid="TemperatureValue"]').eq(1).text();
-  const lowTemp = $('[data-testid="TemperatureValue"]').eq(2).text();
-  
-  // Get additional details (feels like, humidity, wind, etc.)
-  const details = {};
-  $('.TodayDetailsCard--detailsContainer--2yLtL .DetailsSummary--DetailsSummary--1DqjJ').each((i, elem) => {
-    const label = $(elem).find('.DetailsSummary--label--2CXHj').text().trim();
-    const value = $(elem).find('.DetailsSummary--extendedData--307Ax').text().trim();
-    if (label && value) {
-      details[label] = value;
-    }
-  });
-  
-  // Try to get hourly forecast for morning, afternoon, evening
-  const hourlyData = {
-    morning: null,    // 6 AM - 12 PM
-    afternoon: null,  // 12 PM - 6 PM
-    night: null       // 6 PM - 12 AM
-  };
-  
-  // Get hourly forecast
-  const hourlyUrl = 'https://weather.com/weather/hourbyhour/l/42.98,-81.25';
   try {
-    const hourlyResponse = await axios.get(hourlyUrl, {
+    // wttr.in is a free weather service with JSON API
+    const url = 'https://wttr.in/London,Ontario?format=j1';
+    
+    const response = await axios.get(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
     
-    const $hourly = cheerio.load(hourlyResponse.data);
+    const data = response.data;
     
-    // Parse hourly data
-    $hourly('[data-testid="DetailsSummary"]').each((i, elem) => {
-      const timeText = $hourly(elem).find('[data-testid="daypartName"]').text();
-      const temp = $hourly(elem).find('[data-testid="TemperatureValue"]').first().text();
+    // Current conditions
+    const current = data.current_condition[0];
+    const today = data.weather[0];
+    
+    // Get hourly forecast for today
+    const hourly = today.hourly;
+    
+    // Find morning (6-12), afternoon (12-18), night (18-24) temps
+    let morningTemp = null;
+    let afternoonTemp = null;
+    let nightTemp = null;
+    
+    hourly.forEach(hour => {
+      const time = parseInt(hour.time) / 100; // Convert "600" to 6, "1200" to 12
       
-      if (timeText && temp) {
-        const hour = parseInt(timeText);
-        
-        // Morning: 6 AM - 11 AM
-        if (hour >= 6 && hour < 12 && !hourlyData.morning) {
-          hourlyData.morning = { time: timeText, temp: temp };
-        }
-        // Afternoon: 12 PM - 5 PM
-        else if (hour >= 12 && hour < 18 && !hourlyData.afternoon) {
-          hourlyData.afternoon = { time: timeText, temp: temp };
-        }
-        // Night: 6 PM - 11 PM
-        else if (hour >= 18 && hour < 24 && !hourlyData.night) {
-          hourlyData.night = { time: timeText, temp: temp };
-        }
+      if (time >= 6 && time < 12 && !morningTemp) {
+        morningTemp = { time: formatTime(time), temp: hour.tempC + '°' };
+      } else if (time >= 12 && time < 18 && !afternoonTemp) {
+        afternoonTemp = { time: formatTime(time), temp: hour.tempC + '°' };
+      } else if (time >= 18 && time < 24 && !nightTemp) {
+        nightTemp = { time: formatTime(time), temp: hour.tempC + '°' };
       }
     });
+    
+    return {
+      location: 'London, Ontario',
+      current: {
+        temp: current.temp_C + '°',
+        condition: current.weatherDesc[0].value,
+        feelsLike: current.FeelsLikeC + '°'
+      },
+      forecast: {
+        high: today.maxtempC + '°',
+        low: today.mintempC + '°',
+        morning: morningTemp,
+        afternoon: afternoonTemp,
+        night: nightTemp
+      },
+      details: {
+        humidity: current.humidity + '%',
+        wind: current.windspeedKmph + ' km/h',
+        uvIndex: today.uvIndex || 'N/A',
+        visibility: current.visibility + ' km',
+        dewPoint: 'N/A',
+        pressure: current.pressure + ' mb'
+      },
+      timestamp: new Date().toISOString()
+    };
   } catch (error) {
-    console.log('Could not fetch hourly data, using estimates');
+    console.error('Error fetching from wttr.in:', error.message);
+    
+    // If wttr.in fails, try weatherapi.com (also free, no key for current weather)
+    return await scrapeFromWeatherAPI();
   }
-  
-  return {
-    location: 'London, Ontario',
-    current: {
-      temp: currentTemp,
-      condition: condition,
-      feelsLike: details['Feels Like'] || details['RealFeel®'] || 'N/A'
-    },
-    forecast: {
-      high: highTemp,
-      low: lowTemp,
-      morning: hourlyData.morning,
-      afternoon: hourlyData.afternoon,
-      night: hourlyData.night
-    },
-    details: {
-      humidity: details['Humidity'] || 'N/A',
-      wind: details['Wind'] || 'N/A',
-      uvIndex: details['UV Index'] || 'N/A',
-      visibility: details['Visibility'] || 'N/A',
-      dewPoint: details['Dew Point'] || 'N/A',
-      pressure: details['Pressure'] || 'N/A'
-    },
-    timestamp: new Date().toISOString()
-  };
+}
+
+/**
+ * Fallback: Use weatherapi.com's free endpoint
+ */
+async function scrapeFromWeatherAPI() {
+  try {
+    // WeatherAPI allows limited calls without API key using their demo endpoint
+    const url = 'http://api.weatherapi.com/v1/current.json?key=demo&q=London,Ontario&aqi=no';
+    
+    const response = await axios.get(url, {
+      timeout: 10000
+    });
+    
+    const data = response.data;
+    
+    return {
+      location: 'London, Ontario',
+      current: {
+        temp: Math.round(data.current.temp_c) + '°',
+        condition: data.current.condition.text,
+        feelsLike: Math.round(data.current.feelslike_c) + '°'
+      },
+      forecast: {
+        high: 'N/A', // Free tier doesn't include forecast
+        low: 'N/A',
+        morning: null,
+        afternoon: null,
+        night: null
+      },
+      details: {
+        humidity: data.current.humidity + '%',
+        wind: Math.round(data.current.wind_kph) + ' km/h',
+        uvIndex: data.current.uv || 'N/A',
+        visibility: data.current.vis_km + ' km',
+        dewPoint: 'N/A',
+        pressure: data.current.pressure_mb + ' mb'
+      },
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Error fetching from weatherapi.com:', error.message);
+    throw new Error('All weather sources failed. Please add OPENWEATHER_API_KEY to environment variables.');
+  }
+}
+
+/**
+ * Format hour number to readable time
+ */
+function formatTime(hour) {
+  if (hour === 0) return '12 AM';
+  if (hour < 12) return hour + ' AM';
+  if (hour === 12) return '12 PM';
+  return (hour - 12) + ' PM';
 }
 
 /**
