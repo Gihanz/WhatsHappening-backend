@@ -8,20 +8,44 @@ const anthropic = new Anthropic({
  * Generate weather post using Claude
  */
 async function generateWeatherPost(weatherData) {
+  // Build time-based forecast text
+  let timeBasedForecast = '';
+  if (weatherData.forecast.morning) {
+    timeBasedForecast += `Morning: ${weatherData.forecast.morning.temp}\n`;
+  }
+  if (weatherData.forecast.afternoon) {
+    timeBasedForecast += `Afternoon: ${weatherData.forecast.afternoon.temp}\n`;
+  }
+  if (weatherData.forecast.night) {
+    timeBasedForecast += `Night: ${weatherData.forecast.night.temp}\n`;
+  }
+
   const prompt = `Create an engaging Facebook post about today's weather in London, Ontario.
 
 Weather Data:
 - Current: ${weatherData.current.temp}, ${weatherData.current.condition}
+- Feels Like: ${weatherData.current.feelsLike}
 - High: ${weatherData.forecast.high}
 - Low: ${weatherData.forecast.low}
-- Details: ${JSON.stringify(weatherData.details)}
+
+Time-based Forecast:
+${timeBasedForecast || 'Not available'}
+
+Additional Details:
+- Humidity: ${weatherData.details.humidity}
+- Wind: ${weatherData.details.wind}
+${weatherData.details.uvIndex !== 'N/A' ? `- UV Index: ${weatherData.details.uvIndex}` : ''}
 
 Requirements:
-- Keep it friendly and conversational (150-200 characters)
-- Include relevant emoji
-- No hashtags
-- Make it engaging for local residents
-- Mention any weather tips if relevant (umbrella, sunscreen, etc.)
+- Start with a friendly greeting for London, ON residents
+- Include current temperature, feels like, and condition
+- Show temperature progression (morning → afternoon → night) if available
+- Include humidity prominently
+- Keep it concise but informative (250-350 characters max)
+- Use appropriate weather emoji (☀️🌤️⛅☁️🌧️❄️💨🌡️💧)
+- End with a helpful tip based on the weather (e.g., "Stay hydrated!", "Bundle up!", "Don't forget your umbrella!")
+- Make it engaging and conversational
+- NO hashtags
 
 Return only the post text, nothing else.`;
 
@@ -63,6 +87,7 @@ Requirements:
 - Total length: 400-600 characters
 - Use appropriate emoji sparingly
 - End with a call to action (e.g., "Stay informed!" or "What story interests you most?")
+- NO hashtags
 
 Return only the post text, nothing else.`;
 
@@ -103,6 +128,7 @@ Requirements:
 - Total length: 400-600 characters
 - End with encouragement to attend
 - Use event-related emoji (🎭🎵🎨📚🎉 etc.)
+- NO hashtags
 
 Return only the post text, nothing else.`;
 
