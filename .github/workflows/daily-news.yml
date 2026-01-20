@@ -13,7 +13,6 @@ jobs:
     steps:
       - name: Trigger News Post
         run: |
-          curl -X POST "${{ secrets.VERCEL_NEWS_ENDPOINT }}" \
+          curl -X POST ${{ secrets.VERCEL_NEWS_ENDPOINT }} \
             -H "x-auth-token: ${{ secrets.CRON_SECRET }}" \
-            -H "Content-Type: application/json" \
-            --fail --show-error --silent || echo "Curl failed with exit code $?"
+            -H "Content-Type: application/json"
