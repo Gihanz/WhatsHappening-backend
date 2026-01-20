@@ -357,8 +357,38 @@ async function getEventsFromEventbrite() {
           // Clean up date string but don't parse it
           dateRaw = dateRaw.replace(/\s+/g, ' ').trim();
           
-          // Get location
-          let location = $elem.find('[class*="location"], [class*="venue"]').first().text().trim();
+          // Get location - try multiple selectors for venue name
+          let location = '';
+          
+          // Try specific venue/location selectors
+          location = $elem.find('[class*="location"]').first().text().trim()
+                  || $elem.find('[class*="venue"]').first().text().trim()
+                  || $elem.find('p, span, div').filter((i, el) => {
+                       const text = $(el).text().toLowerCase();
+                       // Look for common venue keywords but exclude generic city names
+                       return (text.includes('venue') || 
+                               text.includes('street') || 
+                               text.includes('hall') ||
+                               text.includes('centre') ||
+                               text.includes('center') ||
+                               text.includes('theatre') ||
+                               text.includes('theater') ||
+                               text.includes('gallery') ||
+                               text.includes('club') ||
+                               text.includes('bar') ||
+                               text.includes('restaurant') ||
+                               text.includes('library') ||
+                               text.includes('park')) &&
+                              !text.includes('eventbrite');
+                     }).first().text().trim();
+          
+          // Clean location
+          location = location.replace(/\s+/g, ' ').trim();
+          
+          // If location is empty or too generic, keep it but mark as generic
+          if (!location || location.toLowerCase() === 'london' || location.toLowerCase() === 'ontario') {
+            location = 'London, ON';
+          }
           
           // Get link
           let link = $elem.find('a').first().attr('href') || '';
@@ -379,11 +409,12 @@ async function getEventsFromEventbrite() {
           if (isValid && title && link) {
             console.log(`Event: ${title}`);
             console.log(`  Date (raw): "${dateRaw}"`);
+            console.log(`  Location: "${location}"`);
             
             events.push({
               title: title,
               date: dateRaw || 'Date TBA', // Use raw string, not parsed date
-              location: location || 'London, ON',
+              location: location,
               link: link,
               source: 'Eventbrite'
             });
@@ -417,23 +448,26 @@ async function getEventsFromEventbrite() {
                        href && href.includes('/e/');
         
         if (isValid) {
-          // Try to find date near this link
+          // Try to find date and location near this link
           const parent = $link.parent();
           const siblings = parent.siblings();
           let nearbyDate = '';
+          let nearbyLocation = 'London, ON';
           
           siblings.each((i, sib) => {
             const sibText = $(sib).text();
             if (/\b(today|tomorrow|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(sibText)) {
               nearbyDate = sibText.trim();
-              return false;
+            }
+            if (/\b(venue|hall|centre|center|theatre|street|club|bar|gallery)\b/i.test(sibText)) {
+              nearbyLocation = sibText.trim();
             }
           });
           
           events.push({
             title: text,
             date: nearbyDate || 'Date TBA', // Use raw string
-            location: 'London, ON',
+            location: nearbyLocation,
             link: href.startsWith('http') ? href : 'https://www.eventbrite.com' + href,
             source: 'Eventbrite'
           });
