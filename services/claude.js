@@ -113,31 +113,35 @@ async function generateEventsPost(events) {
       month: 'short', 
       day: 'numeric' 
     });
-    return `${i + 1}. ${event.title}\n   📍 ${event.location}\n   📅 ${dateStr}`;
+    return `${i + 1}. ${event.title}\n   📅 ${dateStr}\n   📍 ${event.location}`;
   }).join('\n\n');
 
   const eventCount = events.length;
 
-  const prompt = `Create an engaging Facebook post about upcoming events in London, Ontario.
+  const prompt = `Create an engaging Facebook post about upcoming events happening this week in London, Ontario.
 
-${eventCount === 1 ? 'Featured Event:' : `${eventCount} Events This Week:`}
+Events happening this week:
 ${eventsText}
 
 CRITICAL REQUIREMENTS:
-- Write a complete, self-contained Facebook post using ONLY the ${eventCount} event(s) listed above
+- This is a WEEKLY EVENTS post covering multiple days this week
+- MUST include each event's specific date (as shown above) in the post
+- Each event happens on a DIFFERENT day - show the date for each one
+- Write a complete, self-contained Facebook post using ALL ${eventCount} event(s) listed above
+- Format: List each event with its emoji, title, DATE, and location
 - DO NOT ask the user for more events
-- DO NOT say things like "we need more events", "could you share the other events", "waiting for more", or anything similar
-- DO NOT mention "Top 5" unless there are actually 5 events
-- DO NOT apologize for the number of events
-- Present the ${eventCount} event(s) as a complete and exciting lineup
-- Start with enthusiasm about what's happening in London this week
-- Use emojis to make it visually appealing
-- Keep it between 200-350 characters total
-- End with encouragement like "Don't miss out!" or "See you there!"
+- DO NOT say "we need more events" or similar phrases
+- Present the ${eventCount} event(s) as a complete weekly lineup
+- Start with something like "This week in London!" or "Your London events this week:"
+- Keep the full post between 400-600 characters
+- End with encouragement like "Mark your calendars!" or "See you there!"
 - NO hashtags
-- The post should read naturally as if ${eventCount} event(s) is exactly what you intended to share
 
-Return ONLY the Facebook post text. Do not include any questions, requests, or meta-commentary.`;
+Example format:
+🎭 Event Name - Mon, Jan 27 @ Location
+🎵 Another Event - Wed, Jan 29 @ Location
+
+Return ONLY the Facebook post text showing all events with their dates.`;
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
