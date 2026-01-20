@@ -73,6 +73,22 @@ async function scrapeTourismLondonWeekly() {
   const $ = cheerio.load(response.data);
   const events = [];
 
+  // List of text to exclude (UI elements, not events)
+  const excludeTexts = [
+    'event category',
+    'london, on',
+    'ontario',
+    'events',
+    'this week',
+    'next week',
+    'filter',
+    'search',
+    'categories',
+    'view all',
+    'read more',
+    'learn more'
+  ];
+
   // Try multiple possible selectors for events
   const selectors = [
     '.event-item',
@@ -90,17 +106,34 @@ async function scrapeTourismLondonWeekly() {
     const elements = $(selector);
     
     if (elements.length > 0) {
-      console.log(`Found ${elements.length} events using selector: ${selector}`);
+      console.log(`Found ${elements.length} potential events using selector: ${selector}`);
       
       elements.each((i, elem) => {
-        if (i >= 10) return false; // Limit to 10 events
+        if (i >= 15) return false; // Check more elements to find real ones
 
         const $elem = $(elem);
         
         // Try various ways to extract title
         let title = $elem.find('h2, h3, h4, .title, .event-title, [class*="title"]').first().text().trim()
                  || $elem.find('a').first().text().trim()
-                 || $elem.text().split('\n')[0].trim();
+                 || '';
+        
+        // Clean up title
+        title = title.replace(/\s+/g, ' ').trim();
+        
+        // Skip if title is garbage
+        const titleLower = title.toLowerCase();
+        const isGarbage = excludeTexts.some(exclude => titleLower === exclude || titleLower.includes(exclude));
+        
+        // Skip if title is too short, too long, or contains only date/location info
+        const isTooShort = title.length < 10;
+        const isTooLong = title.length > 200;
+        const isOnlyDate = /^[a-z]{3},?\s+[a-z]{3}\s+\d{1,2}$/i.test(title);
+        const isOnlyLocation = /^[a-z\s,]+,\s*[a-z]{2}$/i.test(title) && title.length < 30;
+        
+        if (isGarbage || isTooShort || isTooLong || isOnlyDate || isOnlyLocation) {
+          return; // Skip this element
+        }
         
         // Try various ways to extract date
         let date = $elem.find('time, .date, .event-date, [class*="date"]').first().text().trim()
@@ -117,7 +150,8 @@ async function scrapeTourismLondonWeekly() {
           link = 'https://www.londontourism.ca' + link;
         }
 
-        if (title && title.length > 3 && title.length < 200) {
+        // Only add if we have a valid title
+        if (title) {
           events.push({
             title: title,
             date: parseEventDate(date),
@@ -141,23 +175,30 @@ async function scrapeTourismLondonWeekly() {
     
     // Look for any links that might be events
     $('a').each((i, elem) => {
-      if (i >= 15) return false;
+      if (i >= 30) return false;
       
       const $link = $(elem);
       const href = $link.attr('href');
-      const text = $link.text().trim();
+      let text = $link.text().trim();
+      
+      // Clean text
+      text = text.replace(/\s+/g, ' ').trim();
+      const textLower = text.toLowerCase();
+      
+      // Skip garbage
+      const isGarbage = excludeTexts.some(exclude => textLower === exclude || textLower.includes(exclude));
+      const isTooShort = text.length < 10;
+      const isTooLong = text.length > 200;
+      const isOnlyDate = /^[a-z]{3},?\s+[a-z]{3}\s+\d{1,2}$/i.test(text);
       
       // Filter for event-like links
-      if (href && text && 
-          text.length > 10 && text.length < 150 &&
-          !text.toLowerCase().includes('read more') &&
-          !text.toLowerCase().includes('learn more') &&
+      if (href && text && !isGarbage && !isTooShort && !isTooLong && !isOnlyDate &&
           !href.includes('#') &&
           (href.includes('event') || href.includes('calendar'))) {
         
         events.push({
           title: text,
-          date: new Date().toISOString(), // Default to today
+          date: new Date().toISOString(),
           location: 'London, ON',
           link: href.startsWith('http') ? href : 'https://www.londontourism.ca' + href,
           source: 'Tourism London'
@@ -166,7 +207,7 @@ async function scrapeTourismLondonWeekly() {
     });
   }
 
-  console.log(`Scraped ${events.length} events from Tourism London`);
+  console.log(`Scraped ${events.length} valid events from Tourism London`);
   return events;
 }
 
