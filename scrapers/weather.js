@@ -2,20 +2,49 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 
 /**
- * Scrapes weather data for London, Ontario from weather.com
- * Free alternative to paid weather APIs
+ * Scrapes weather data for London, Ontario
+ * Tries OpenWeatherMap API first (free, more reliable)
+ * Falls back to scraping only if API key not provided
  */
 async function getWeatherData() {
   try {
-    // Using environment variable if available, otherwise scrape
+    // Try OpenWeatherMap API first (more reliable)
     if (process.env.OPENWEATHER_API_KEY) {
+      console.log('Using OpenWeatherMap API...');
       return await getWeatherFromAPI();
     }
     
+    console.log('No API key found, attempting to scrape weather.com...');
     return await scrapeWeatherData();
   } catch (error) {
     console.error('Error fetching weather:', error.message);
-    return null;
+    
+    // Return fallback data so the bot doesn't crash
+    return {
+      location: 'London, Ontario',
+      current: {
+        temp: 'N/A',
+        condition: 'Weather data temporarily unavailable',
+        feelsLike: 'N/A'
+      },
+      forecast: {
+        high: 'N/A',
+        low: 'N/A',
+        morning: null,
+        afternoon: null,
+        night: null
+      },
+      details: {
+        humidity: 'N/A',
+        wind: 'N/A',
+        uvIndex: 'N/A',
+        visibility: 'N/A',
+        dewPoint: 'N/A',
+        pressure: 'N/A'
+      },
+      timestamp: new Date().toISOString(),
+      error: true
+    };
   }
 }
 
