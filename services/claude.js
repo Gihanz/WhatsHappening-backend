@@ -107,13 +107,9 @@ Return only the post text, nothing else.`;
  * Generate weekly events post using Claude
  */
 async function generateEventsPost(events) {
+  // Don't format dates - use them as-is from the website
   const eventsText = events.map((event, i) => {
-    const dateStr = new Date(event.date).toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric' 
-    });
-    return `${i + 1}. ${event.title}\n   📅 ${dateStr}\n   📍 ${event.location}`;
+    return `${i + 1}. ${event.title}\n   📅 ${event.date}\n   📍 ${event.location}`;
   }).join('\n\n');
 
   const eventCount = events.length;
@@ -125,10 +121,10 @@ ${eventsText}
 
 CRITICAL REQUIREMENTS:
 - This is a WEEKLY EVENTS post covering multiple days this week
-- MUST include each event's specific date (as shown above) in the post
-- Each event happens on a DIFFERENT day - show the date for each one
+- MUST include each event's date EXACTLY as shown above (Today, Tomorrow, Saturday, etc.)
+- DO NOT change the date format - use it exactly as provided
 - Write a complete, self-contained Facebook post using ALL ${eventCount} event(s) listed above
-- Format: List each event with its emoji, title, DATE, and location
+- Format: List each event with its emoji, title, DATE (as shown), and location
 - DO NOT ask the user for more events
 - DO NOT say "we need more events" or similar phrases
 - Present the ${eventCount} event(s) as a complete weekly lineup
@@ -138,10 +134,11 @@ CRITICAL REQUIREMENTS:
 - NO hashtags
 
 Example format:
-🎭 Event Name - Mon, Jan 27 @ Location
-🎵 Another Event - Wed, Jan 29 @ Location
+🎭 Event Name - Today @ Location
+🎵 Another Event - Saturday @ Location
+🎨 Third Event - Jan 27 @ Location
 
-Return ONLY the Facebook post text showing all events with their dates.`;
+Return ONLY the Facebook post text showing all events with their dates EXACTLY as provided.`;
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',

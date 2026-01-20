@@ -57,11 +57,10 @@ async function getEvents() {
 
   console.log(`=== Total events collected: ${events.length} ===`);
 
-  // Remove duplicates and sort by date
+  // Remove duplicates (don't sort by date since dates are now strings)
   const uniqueEvents = removeDuplicates(events);
-  uniqueEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  // Return at least something, even if just 1 event
+  // Return up to 5 events
   const finalEvents = uniqueEvents.slice(0, 5);
   
   console.log(`=== Returning ${finalEvents.length} events ===`);
@@ -338,23 +337,25 @@ async function getEventsFromEventbrite() {
           
           title = title.replace(/\s+/g, ' ').trim();
           
-          // Get date - Eventbrite usually has time element or data attributes
-          let date = '';
+          // Get date - USE AS IS, don't parse
+          let dateRaw = '';
           let dateElement = $elem.find('time').first();
           
           if (dateElement.length > 0) {
-            // Try datetime attribute first (most reliable)
-            date = dateElement.attr('datetime') || dateElement.text().trim();
+            // Use the visible text, not datetime attribute
+            dateRaw = dateElement.text().trim();
           } else {
             // Try various date selectors
-            date = $elem.find('[class*="date"]').first().text().trim()
-                || $elem.find('[datetime]').first().attr('datetime')
-                || $elem.find('p, span').filter((i, el) => {
-                     const text = $(el).text();
-                     // Look for date-like text (e.g., "Sat, Jan 24", "Jan 24", "24 Jan")
-                     return /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|mon|tue|wed|thu|fri|sat|sun)/i.test(text);
-                   }).first().text().trim();
+            dateRaw = $elem.find('[class*="date"]').first().text().trim()
+                   || $elem.find('p, span').filter((i, el) => {
+                        const text = $(el).text();
+                        // Look for date-like text
+                        return /\b(today|tomorrow|tonight|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|mon|tue|wed|thu|fri|sat|sun)/i.test(text);
+                      }).first().text().trim();
           }
+          
+          // Clean up date string but don't parse it
+          dateRaw = dateRaw.replace(/\s+/g, ' ').trim();
           
           // Get location
           let location = $elem.find('[class*="location"], [class*="venue"]').first().text().trim();
@@ -377,11 +378,11 @@ async function getEventsFromEventbrite() {
           
           if (isValid && title && link) {
             console.log(`Event: ${title}`);
-            console.log(`  Raw date: "${date}"`);
+            console.log(`  Date (raw): "${dateRaw}"`);
             
             events.push({
               title: title,
-              date: parseEventDate(date),
+              date: dateRaw || 'Date TBA', // Use raw string, not parsed date
               location: location || 'London, ON',
               link: link,
               source: 'Eventbrite'
@@ -423,7 +424,7 @@ async function getEventsFromEventbrite() {
           
           siblings.each((i, sib) => {
             const sibText = $(sib).text();
-            if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(sibText)) {
+            if (/\b(today|tomorrow|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(sibText)) {
               nearbyDate = sibText.trim();
               return false;
             }
@@ -431,7 +432,7 @@ async function getEventsFromEventbrite() {
           
           events.push({
             title: text,
-            date: parseEventDate(nearbyDate),
+            date: nearbyDate || 'Date TBA', // Use raw string
             location: 'London, ON',
             link: href.startsWith('http') ? href : 'https://www.eventbrite.com' + href,
             source: 'Eventbrite'
@@ -451,7 +452,7 @@ async function getEventsFromEventbrite() {
 
 /**
  * Parse event date string into ISO format
- * Handles formats like: "Sat, Jan 24", "Jan 24", "January 24", "2025-01-24", etc.
+ * Handles formats like: "Today", "Tomorrow", "Saturday", "Sat, Jan 24", "Jan 24", etc.
  */
 function parseEventDate(dateStr) {
   if (!dateStr || dateStr === '') {
@@ -463,13 +464,62 @@ function parseEventDate(dateStr) {
   
   // Clean the date string
   dateStr = dateStr.trim().replace(/\s+/g, ' ');
+  const lowerDate = dateStr.toLowerCase();
   
   console.log(`  Parsing date: "${dateStr}"`);
   
-  // Try ISO format first (2025-01-24T00:00:00)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Handle relative dates
+  if (lowerDate.includes('today')) {
+    console.log(`  ✓ Parsed as: TODAY - ${today.toDateString()}`);
+    return today.toISOString();
+  }
+  
+  if (lowerDate.includes('tomorrow')) {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    console.log(`  ✓ Parsed as: TOMORROW - ${tomorrow.toDateString()}`);
+    return tomorrow.toISOString();
+  }
+  
+  // Handle day names (Monday, Tuesday, etc.)
+  const dayNames = {
+    'sunday': 0, 'sun': 0,
+    'monday': 1, 'mon': 1,
+    'tuesday': 2, 'tue': 2, 'tues': 2,
+    'wednesday': 3, 'wed': 3,
+    'thursday': 4, 'thu': 4, 'thur': 4, 'thurs': 4,
+    'friday': 5, 'fri': 5,
+    'saturday': 6, 'sat': 6
+  };
+  
+  for (const [dayName, targetDay] of Object.entries(dayNames)) {
+    // Check if the date string is JUST the day name (not part of a full date)
+    const isDayOnly = new RegExp(`^${dayName}$`, 'i').test(lowerDate) || 
+                      new RegExp(`^${dayName}\\s*$`, 'i').test(lowerDate);
+    
+    if (isDayOnly) {
+      const currentDay = today.getDay();
+      let daysToAdd = targetDay - currentDay;
+      
+      // If the day has passed this week, get next week's occurrence
+      if (daysToAdd <= 0) {
+        daysToAdd += 7;
+      }
+      
+      const targetDate = new Date(today);
+      targetDate.setDate(targetDate.getDate() + daysToAdd);
+      console.log(`  ✓ Parsed as: ${dayName.toUpperCase()} - ${targetDate.toDateString()}`);
+      return targetDate.toISOString();
+    }
+  }
+  
+  // Try ISO format (2025-01-24T00:00:00)
   let date = new Date(dateStr);
   if (!isNaN(date.getTime()) && date.getFullYear() > 2020) {
-    console.log(`  ✓ Parsed as: ${date.toDateString()}`);
+    console.log(`  ✓ Parsed as ISO: ${date.toDateString()}`);
     return date.toISOString();
   }
   
@@ -490,7 +540,6 @@ function parseEventDate(dateStr) {
   };
   
   // Extract month and day
-  const lowerDate = dateStr.toLowerCase();
   let month = -1;
   let day = -1;
   
@@ -519,12 +568,12 @@ function parseEventDate(dateStr) {
     }
     
     date = new Date(year, month, day);
-    console.log(`  ✓ Parsed as: ${date.toDateString()}`);
+    console.log(`  ✓ Parsed as month/day: ${date.toDateString()}`);
     return date.toISOString();
   }
   
   // Last resort: return a future date
-  console.log(`  ✗ Could not parse, using default`);
+  console.log(`  ✗ Could not parse, using default (+7 days)`);
   const futureDate = new Date();
   futureDate.setDate(futureDate.getDate() + 7);
   return futureDate.toISOString();
