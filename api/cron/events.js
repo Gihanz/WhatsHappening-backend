@@ -1,4 +1,4 @@
-fgfg// Vercel Serverless Function - Weekly Events Post
+// Vercel Serverless Function - Weekly Events Post
 // This function is triggered by GitHub Actions
 
 const { getEvents } = require('../../scrapers/events');
