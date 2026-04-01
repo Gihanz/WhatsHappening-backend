@@ -1,4 +1,4 @@
-// Vercel Serverless Function - Daily News Post
+jjjjjjjjjjj// Vercel Serverless Function - Daily News Post
 // This function is triggered by GitHub Actions
 
 const { getNews, getAlerts } = require('../../scrapers/news');
